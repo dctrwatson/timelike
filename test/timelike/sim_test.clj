@@ -49,7 +49,7 @@
     (println "Max:    " q1)))
  
 (def n 100000)
-(def interval 1.5)
+(def interval 0.5)
 (def pool-size 250)
 
 (defn test-node
@@ -184,3 +184,56 @@
             (faulty-lb
               (pool (/ pool-size 10)
                 (faulty-dyno)))))))))
+
+(defn limit-conn
+  [limit downstream]
+  (let [c (atom 0)]
+    (fn [req]
+      (if (>= @c limit)
+        (conj req (error))
+        (do (swap! c inc)
+            (let [res (downstream req)]
+            (swap! c dec)
+            res))))))
+
+(defn uwsgi
+  [n]
+  (lb-rr :uwsgi
+    (pool n
+      (queue-exclusive
+        (delay-fixed 20
+          (delay-exponential 100
+            (server :django)))))))
+
+(defn app-node
+  [n p]
+  (cable 2
+    (lb-min-conn :nginx
+      (pool n
+        (uwsgi p)))))
+
+(def nodes 10)
+(def instances 4)
+(def procs 8)
+(def limit-ratio 1.5)
+
+(deftest ^:theory normal-test
+  (test-node "Varnish -> nginx (least_conn) -> uWSGI"
+    (lb-random :varnish
+      (pool nodes
+        (app-node instances procs)))))
+
+(deftest ^:theory theory-test
+  (test-node "Varnish (retry backends) -> nginx (limited) -> uWSGI"
+    (retry nodes
+      (lb-random :varnish
+        (pool nodes
+          (limit-conn (* instances procs limit-ratio)
+            (app-node instances procs)))))))
+
+(deftest ^:theory theory-no-retry-test
+  (test-node "Varnish -> nginx (limited) -> uWSGI"
+    (lb-random :varnish
+      (pool nodes
+        (limit-conn (* instances procs limit-ratio)
+          (app-node instances procs))))))

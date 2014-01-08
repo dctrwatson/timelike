@@ -8,7 +8,9 @@
                    :bamboo :bamboo
                    :layered :layered
                    :faulty :faulty
-                   :focus :focus}
+                   :focus :focus
+                   :theory :theory}
+  :jvm-opts ["-Xmx2g"]
   :dependencies [[org.clojure/clojure "1.4.0"]
                  [org.clojure/math.numeric-tower "0.0.1"]
                  [incanter/incanter-core "1.4.1"]])
